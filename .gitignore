@@ -1,0 +1,6 @@
+# 平文データ・パスワードは公開しない
+.password
+build_data.py
+data/data.js
+__pycache__/
+.DS_Store
