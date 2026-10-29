@@ -4,3 +4,4 @@ build_data.py
 data/data.js
 __pycache__/
 .DS_Store
+source.json

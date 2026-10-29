@@ -9,5 +9,5 @@
 
 ## 更新（ローカルのみ）
 1. レポートシートを最新にする。
-2. ローカルの `build_data.py` の数字を直して `python3 build_data.py` を実行 → `data/data.enc.js` が作り直される（実行時にサマリーとの突き合わせあり）。
+2. シートの数字をローカルの `source.json` に書き出して `python3 build_data.py` を実行 → `data/data.enc.js` が作り直される（実行時にサマリーとの突き合わせあり）。毎朝の定期タスクで自動実行。
 3. `git add data/data.enc.js && git commit && git push`
