@@ -1,0 +1,33 @@
+name: Check Meta API (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Meta insights for 2026-11-05 (GET only)
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+        run: |
+          python - <<'PY'
+          import os, json, requests
+          r = requests.get(f"https://graph.facebook.com/v21.0/act_{os.environ['META_AD_ACCOUNT_ID']}/insights", params={
+              "level": "ad", "fields": "campaign_name,ad_name,spend,impressions,inline_link_clicks,actions",
+              "time_range": json.dumps({"since": "2026-11-05", "until": "2026-11-05"}),
+              "access_token": os.environ["META_ACCESS_TOKEN"], "limit": 50}, timeout=60)
+          print("HTTP", r.status_code)
+          j = r.json()
+          if r.status_code != 200:
+              print(json.dumps(j.get("error", {}).get("message", "")))
+          for x in j.get("data", []):
+              acts = {a["action_type"]: a["value"] for a in x.get("actions", [])}
+              print(x["campaign_name"], x["ad_name"], x["spend"], x["impressions"], x.get("inline_link_clicks"), "omni_purchase=", acts.get("omni_purchase"))
+          PY
