@@ -1,0 +1,81 @@
+name: Update Dashboard
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 毎朝 JST 10:00（前日までの確定分）
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: '最終日 YYYY-MM-DD（空=前日）'
+        required: false
+        default: ''
+      dry_run:
+        description: 'true=確認のみ（数字を表示、ダッシュボードは更新しない）'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests google-analytics-data google-auth cryptography
+
+      - name: Create service account JSON
+        run: echo '${{ secrets.SERVICE_ACCOUNT_JSON }}' > service_account.json
+
+      - name: Restore build_data.py (非公開の固定データを含むためSecretsで保持)
+        run: printf '%s' "$BUILD_DATA_PY" > build_data.py
+        env:
+          BUILD_DATA_PY: ${{ secrets.BUILD_DATA_PY }}
+
+      - name: Fetch from Meta / GA4 -> source.json
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+          SERVICE_ACCOUNT_JSON_PATH: service_account.json
+          END_DATE: ${{ github.event.inputs.end_date }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: python scripts/fetch_source.py source.json
+
+      - name: Summary (dry_run のときだけ・数字のみ)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          s = json.load(open("source.json", encoding="utf-8"))
+          for k in ("dog", "cat"):
+              print("==", k, "rows", len(s[k]["daily"]), "ga4", s[k]["ga4"])
+              for w in s[k]["weekly"]:
+                  print(w["label"], w["period"], w["spend"], w["imp"], w["clicks"], w["purchases"], w["click_only"], "partial" if w.get("partial") else "")
+              last = s[k]["daily"][-1][0]
+              print("last day", last, [r for r in s[k]["daily"] if r[0] == last])
+          PY
+
+      - name: Build encrypted data
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+        run: python build_data.py
+
+      - name: Clean up secrets
+        if: always()
+        run: rm -f service_account.json build_data.py source.json data/data.js
+
+      - name: Commit and push data.enc.js only
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          if git diff --quiet -- data/data.enc.js; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions"
+          git config user.email "action@github.com"
+          git add data/data.enc.js
+          git commit -m "データ更新（自動）：$(TZ=Asia/Tokyo date +'%-m/%-d')朝"
+          git push

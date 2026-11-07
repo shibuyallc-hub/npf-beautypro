@@ -101,6 +101,17 @@ def ga4(cfg):
     return {"sessions": s, "purchases": p, "period": f"{md(cfg['ga4_start'])}〜{md(END)}"}
 
 
+def safe_ga4(cfg):
+    """DRY_RUN のときだけ GA4 失敗を許容（権限待ちの確認用）。本番は失敗したら止める。"""
+    try:
+        return ga4(cfg)
+    except Exception as e:
+        if os.environ.get("DRY_RUN") == "true":
+            print("WARN GA4 取得失敗（dry_runのため続行）:", type(e).__name__, str(e)[:200])
+            return {"sessions": 0, "purchases": 0, "period": "GA4未取得"}
+        raise
+
+
 def weeks(cfg):
     out, n = [], cfg["later_label_from"]
     for label, s, e in cfg["first_weeks"]:
@@ -137,7 +148,7 @@ def main():
                 click_only[date.fromisoformat(r["date_start"])] = click_only.get(date.fromisoformat(r["date_start"]), 0) + purchases(r, "7d_click")
         src[key] = {
             "daily": [[md(d), a, v[0], v[1], v[3]] for (d, a), v in sorted(daily.items(), key=lambda x: (x[0][0], list(cfg["ads"].values()).index(x[0][1])))],
-            "weekly": [], "ga4": ga4(cfg),
+            "weekly": [], "ga4": safe_ga4(cfg),
         }
         for label, s, e in weeks(cfg):
             ws = [(d, a, v) for (d, a), v in daily.items() if s <= d <= e]
