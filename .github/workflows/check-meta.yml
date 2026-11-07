@@ -12,22 +12,27 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Meta insights for 2026-11-05 (GET only)
+      - name: Attribution diagnostics (GET only, numbers only)
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
         run: |
           python - <<'PY'
           import os, json, requests
-          r = requests.get(f"https://graph.facebook.com/v21.0/act_{os.environ['META_AD_ACCOUNT_ID']}/insights", params={
-              "level": "ad", "fields": "campaign_name,ad_name,spend,impressions,inline_link_clicks,actions",
-              "time_range": json.dumps({"since": "2026-11-05", "until": "2026-11-05"}),
-              "access_token": os.environ["META_ACCESS_TOKEN"], "limit": 50}, timeout=60)
-          print("HTTP", r.status_code)
-          j = r.json()
-          if r.status_code != 200:
-              print(json.dumps(j.get("error", {}).get("message", "")))
-          for x in j.get("data", []):
-              acts = {a["action_type"]: a["value"] for a in x.get("actions", [])}
-              print(x["campaign_name"], x["ad_name"], x["spend"], x["impressions"], x.get("inline_link_clicks"), "omni_purchase=", acts.get("omni_purchase"))
+          def q(since, until, windows=None, extra=None):
+              p = {"level": "campaign", "fields": "campaign_name,actions",
+                   "time_range": json.dumps({"since": since, "until": until}),
+                   "access_token": os.environ["META_ACCESS_TOKEN"], "limit": 50}
+              if windows: p["action_attribution_windows"] = json.dumps(windows)
+              if extra: p.update(extra)
+              r = requests.get(f"https://graph.facebook.com/v21.0/act_{os.environ['META_AD_ACCOUNT_ID']}/insights", params=p, timeout=60)
+              return r.status_code, r.json()
+          for label, w, extra in [("default", None, None), ("7d_click", ["7d_click"], None), ("7d_click+1d_view", ["7d_click","1d_view"], None),
+                                  ("1d_click", ["1d_click"], None), ("7d_click+1d_view+1d_ev", ["7d_click","1d_view","1d_ev"], None)]:
+              st, j = q("2026-10-12", "2026-10-17", w, extra)
+              print("##", label, st)
+              for x in j.get("data", []):
+                  for a in x.get("actions", []):
+                      if "purchase" in a["action_type"]:
+                          print(x["campaign_name"], a["action_type"], {k: v for k, v in a.items() if k != "action_type"})
           PY
