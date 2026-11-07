@@ -74,7 +74,9 @@ def purchases(row, window_key=None):
     a = acts.get("omni_purchase") or acts.get("purchase")
     if not a:
         return 0
-    return int(float(a.get(window_key, a["value"]) if window_key else a["value"]))
+    if window_key:   # そのウィンドウの値。0件の日はキー自体が返らないので 0（全体値で代用しない）
+        return int(float(a.get(window_key, 0)))
+    return int(float(a["value"]))
 
 
 def ga4(cfg):
